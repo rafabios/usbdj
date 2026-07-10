@@ -45,7 +45,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           $version = "${{ steps.version.outputs.version }}"
-          if (git rev-parse $version 2>$null) {
+          $existing = git tag --list $version
+          if ($existing -eq $version) {
             Write-Host "Tag $version already exists."
           } else {
             git tag $version
