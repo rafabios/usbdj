@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>USB DJ Formatter</title>
+    <meta
+      name="description"
+      content="Ferramenta portatil para Windows para preparar pendrives para CDJ, XDJ e all-in-one DJ systems."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/">
+        <span class="brand-mark">DJ</span>
+        <span>USB DJ Formatter</span>
+      </a>
+      <nav aria-label="Navegacao principal">
+        <a href="#compatibilidade">Compatibilidade</a>
+        <a href="#modos">Modos</a>
+        <a href="#download">Download</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Windows portable tool</p>
+          <h1>USB DJ Formatter</h1>
+          <p class="lead">
+            Prepare pendrives para CDJs, XDJs e all-in-one da Pioneer DJ/AlphaTheta
+            com um fluxo simples para sala de aula: escolher o pendrive, escolher o modo
+            e confirmar.
+          </p>
+          <div class="hero-actions">
+            <a class="primary" href="https://github.com/vemcompy/usbdj/releases/latest">Baixar para Windows</a>
+            <a class="secondary" href="https://github.com/vemcompy/usbdj">Ver codigo</a>
+          </div>
+        </div>
+
+        <div class="app-preview" aria-label="Previa visual do aplicativo">
+          <div class="window-bar">
+            <span></span>
+            <span></span>
+            <span></span>
+            <strong>USB DJ Formatter</strong>
+          </div>
+          <div class="preview-body">
+            <div class="field">
+              <span>Pendrive</span>
+              <strong>Disco 3 - General UDisk - 31.0 GB</strong>
+            </div>
+            <div class="mode selected">
+              <b>CDJs antigos / modo legado</b>
+              <small>FAT32 + MBR</small>
+            </div>
+            <div class="mode">
+              <b>CDJs novos / modo atual</b>
+              <small>exFAT + MBR</small>
+            </div>
+            <div class="log">
+              <span>Letra de unidade escolhida: E:</span>
+              <span>Formatacao nativa concluida pelo diskpart.</span>
+              <span>Validacao OK: E: FAT32, MBR, label=CDJ_USB</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="compatibilidade" class="band">
+        <div class="section-head">
+          <p class="eyebrow">Compatibilidade</p>
+          <h2>Presets para players e all-in-one</h2>
+        </div>
+        <div class="grid two">
+          <article>
+            <h3>Modo legado</h3>
+            <p>Indicado para equipamentos mais antigos e ambientes onde FAT32 e MBR sao a escolha mais segura.</p>
+            <ul>
+              <li>CDJ-350, CDJ-850, CDJ-900</li>
+              <li>CDJ-2000, CDJ-2000NXS</li>
+              <li>XDJ-AERO, XDJ-R1, XDJ-RX</li>
+            </ul>
+          </article>
+          <article>
+            <h3>Modo novo</h3>
+            <p>Indicado para modelos recentes com melhor suporte a pendrives grandes e exFAT.</p>
+            <ul>
+              <li>CDJ-3000, CDJ-3000X</li>
+              <li>XDJ-RX2, XDJ-RR, XDJ-XZ, XDJ-RX3</li>
+              <li>OPUS-QUAD, OMNIS-DUO, XDJ-AZ</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="modos" class="band muted">
+        <div class="section-head">
+          <p class="eyebrow">Como funciona</p>
+          <h2>Simples para aluno, tecnico por baixo</h2>
+        </div>
+        <div class="grid three">
+          <article>
+            <h3>FAT32 automatico</h3>
+            <p>Ate 32 GB, usa o backend nativo do Windows. Acima disso, o projeto esta preparado para usar um helper FAT32 grande.</p>
+          </article>
+          <article>
+            <h3>exFAT moderno</h3>
+            <p>Para players recentes, usa exFAT e MBR por padrao, com validacao no final do processo.</p>
+          </article>
+          <article>
+            <h3>Avancado escondido</h3>
+            <p>Quem precisa pode ajustar formato, particao, cluster e nome do volume sem complicar a tela principal.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="download" class="download">
+        <div>
+          <p class="eyebrow">Download</p>
+          <h2>Baixe o executavel da ultima release</h2>
+          <p>
+            O arquivo publicado e um binario Windows direto. Baixe, abra e aceite a permissao
+            do Windows apenas quando for preparar o pendrive.
+          </p>
+        </div>
+        <a class="primary" href="https://github.com/vemcompy/usbdj/releases/latest">Ir para Releases</a>
+      </section>
+    </main>
+
+    <footer>
+      <span>USB DJ Formatter</span>
+      <a href="https://github.com/vemcompy/usbdj">GitHub</a>
+    </footer>
+  </body>
+</html>

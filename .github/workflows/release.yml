@@ -1,0 +1,99 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set release version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}"
+          } else {
+            $version = "${{ github.ref_name }}"
+          }
+          if (-not $version.StartsWith("v")) {
+            throw "Version must start with v, for example v0.1.0"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Create tag for manual release
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          $version = "${{ steps.version.outputs.version }}"
+          if (git rev-parse $version 2>$null) {
+            Write-Host "Tag $version already exists."
+          } else {
+            git tag $version
+            git push origin $version
+          }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+
+      - name: Run tests
+        shell: pwsh
+        run: python -m unittest discover -s tests
+
+      - name: Build executable
+        shell: pwsh
+        run: pyinstaller --clean --noconfirm packaging/usbdj.spec
+
+      - name: Rename executable with version
+        id: asset
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $source = "dist\USB-DJ-Formatter.exe"
+          $target = "dist\USB-DJ-Formatter-$version.exe"
+          if (-not (Test-Path $source)) {
+            throw "Build output not found: $source"
+          }
+          Move-Item -Force $source $target
+          "path=$target" >> $env:GITHUB_OUTPUT
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: USB-DJ-Formatter
+          path: ${{ steps.asset.outputs.path }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: USB DJ Formatter ${{ steps.version.outputs.version }}
+          files: ${{ steps.asset.outputs.path }}
+          generate_release_notes: true
