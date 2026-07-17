@@ -291,13 +291,17 @@ def fat32_helper_candidates() -> list[Path]:
     bundled_base = getattr(sys, "_MEIPASS", None)
     if bundled_base:
         candidates.append(Path(bundled_base) / FAT32_HELPER_RELATIVE_PATH)
+        candidates.append(Path(bundled_base) / FAT32_HELPER_RELATIVE_PATH.name)
 
     if getattr(sys, "frozen", False):
-        candidates.append(Path(sys.executable).resolve().parent / FAT32_HELPER_RELATIVE_PATH)
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates.append(exe_dir / FAT32_HELPER_RELATIVE_PATH)
+        candidates.append(exe_dir / FAT32_HELPER_RELATIVE_PATH.name)
 
     project_root = Path(__file__).resolve().parents[1]
     candidates.append(project_root / FAT32_HELPER_RELATIVE_PATH)
     candidates.append(Path.cwd() / FAT32_HELPER_RELATIVE_PATH)
+    candidates.append(Path.cwd() / FAT32_HELPER_RELATIVE_PATH.name)
 
     unique: list[Path] = []
     seen: set[Path] = set()
@@ -326,7 +330,8 @@ def require_fat32_helper(fat32_helper: Path | None = None) -> Path:
     raise BackendError(
         f"Helper FAT32 grande nao encontrado: {helper_path}. "
         "Para FAT32 acima de 32 GiB, adicione uma ferramenta validada em "
-        "tools\\fat32format.exe ou defina USBDJ_FAT32_HELPER com o caminho do executavel. "
+        "tools\\fat32format.exe, coloque fat32format.exe ao lado do app, "
+        "ou defina USBDJ_FAT32_HELPER com o caminho do executavel. "
         f"Caminhos verificados: {checked}"
     )
 

@@ -27,7 +27,7 @@ Este repositorio comeca com um MVP seguro:
 - validacao final de filesystem, label e estilo de particao;
 - testes unitarios do planejador.
 
-O helper FAT32 grande ainda precisa ser adicionado em `tools/fat32format.exe` depois de validarmos a licenca escolhida.
+O helper FAT32 grande precisa estar em `tools/fat32format.exe` antes de publicar uma Release. O workflow falha de proposito se esse arquivo nao existir, para evitar publicar um app sem suporte a FAT32 acima de 32 GiB.
 
 ## Uso em desenvolvimento
 
@@ -65,10 +65,16 @@ O workflow `.github/workflows/release.yml` gera o binario em Windows e publica u
 Opcoes:
 
 - criar e enviar uma tag `v*`, por exemplo `v0.1.0`;
-- rodar o workflow manualmente informando `v0.1.0`.
+- rodar o workflow manualmente. Se a versao ficar vazia, ele usa `version` do `pyproject.toml`;
+- rodar o workflow manualmente informando o campo `tag` como `v0.1.0` ou `0.1.0`.
 
-O asset publicado fica como:
+Ao rodar manualmente, o workflow cria a tag no commit atual e publica a Release.
+
+Os assets publicados ficam como:
 
 ```text
-USB-DJ-Formatter-v0.1.0.exe
+USB-DJ-Formatter-v0.1.1.exe
+USB-DJ-Formatter-latest.exe
 ```
+
+A pagina usa o link estavel `releases/latest/download/USB-DJ-Formatter-latest.exe`, entao nao precisa ser atualizada a cada versao.

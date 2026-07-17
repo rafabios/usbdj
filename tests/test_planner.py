@@ -165,6 +165,32 @@ class PlannerTests(unittest.TestCase):
                     delattr(windows_backend.sys, "frozen")
                 windows_backend.sys.executable = original_executable
 
+    def test_default_fat32_helper_accepts_helper_next_to_frozen_exe(self) -> None:
+        original_meipass = getattr(windows_backend.sys, "_MEIPASS", None)
+        had_meipass = hasattr(windows_backend.sys, "_MEIPASS")
+        original_frozen = getattr(windows_backend.sys, "frozen", None)
+        had_frozen = hasattr(windows_backend.sys, "frozen")
+        original_executable = windows_backend.sys.executable
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            helper = temp_path / "fat32format.exe"
+            helper.write_bytes(b"")
+            windows_backend.sys._MEIPASS = str(temp_path / "_MEI123")  # type: ignore[attr-defined]
+            windows_backend.sys.frozen = True  # type: ignore[attr-defined]
+            windows_backend.sys.executable = str(temp_path / "USB-DJ-Formatter.exe")
+            try:
+                self.assertEqual(windows_backend.default_fat32_helper_path(), helper)
+            finally:
+                if had_meipass:
+                    windows_backend.sys._MEIPASS = original_meipass  # type: ignore[attr-defined]
+                else:
+                    delattr(windows_backend.sys, "_MEIPASS")
+                if had_frozen:
+                    windows_backend.sys.frozen = original_frozen  # type: ignore[attr-defined]
+                else:
+                    delattr(windows_backend.sys, "frozen")
+                windows_backend.sys.executable = original_executable
+
 
 if __name__ == "__main__":
     unittest.main()
