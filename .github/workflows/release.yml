@@ -65,28 +65,42 @@ jobs:
         shell: pwsh
         run: python -m unittest discover -s tests
 
+      - name: Check FAT32 helper
+        shell: pwsh
+        run: |
+          $helper = "tools\fat32format.exe"
+          if (-not (Test-Path $helper)) {
+            throw "Missing $helper. Add the validated FAT32 helper before publishing a release."
+          }
+
       - name: Build executable
         shell: pwsh
         run: pyinstaller --clean --noconfirm packaging/usbdj.spec
 
-      - name: Rename executable with version
+      - name: Prepare release assets
         id: asset
         shell: pwsh
         run: |
           $version = "${{ steps.release.outputs.tag }}"
           $source = "dist\USB-DJ-Formatter.exe"
-          $target = "dist\USB-DJ-Formatter-$version.exe"
+          $versioned = "dist\USB-DJ-Formatter-$version.exe"
+          $latest = "dist\USB-DJ-Formatter-latest.exe"
           if (-not (Test-Path $source)) {
             throw "Build output not found: $source"
           }
-          Move-Item -Force $source $target
-          "path=$target" >> $env:GITHUB_OUTPUT
+          Copy-Item -Force $source $versioned
+          Copy-Item -Force $source $latest
+          Remove-Item -Force $source
+          "versioned_path=$versioned" >> $env:GITHUB_OUTPUT
+          "latest_path=$latest" >> $env:GITHUB_OUTPUT
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: USB-DJ-Formatter
-          path: ${{ steps.asset.outputs.path }}
+          path: |
+            ${{ steps.asset.outputs.versioned_path }}
+            ${{ steps.asset.outputs.latest_path }}
 
       - name: Create tag for manual release
         if: github.event_name == 'workflow_dispatch'
@@ -112,6 +126,9 @@ jobs:
         with:
           tag_name: ${{ steps.release.outputs.tag }}
           name: USB DJ Formatter ${{ steps.release.outputs.tag }}
-          files: ${{ steps.asset.outputs.path }}
+          files: |
+            ${{ steps.asset.outputs.versioned_path }}
+            ${{ steps.asset.outputs.latest_path }}
           generate_release_notes: true
           fail_on_unmatched_files: true
+          make_latest: true
