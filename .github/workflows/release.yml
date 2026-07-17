@@ -6,9 +6,10 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Release version, for example v0.1.0"
-        required: true
+      tag:
+        description: "Tag da release, por exemplo v0.1.0. Deixe vazio para usar pyproject.toml."
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -24,34 +25,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set release version
-        id: version
+      - name: Set release tag
+        id: release
         shell: pwsh
         run: |
           if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $version = "${{ inputs.version }}"
+            $tag = "${{ inputs.tag }}".Trim()
+            if (-not $tag) {
+              $pyproject = Get-Content pyproject.toml -Raw
+              if ($pyproject -notmatch '(?m)^version\s*=\s*"([^"]+)"') {
+                throw "Could not find project.version in pyproject.toml"
+              }
+              $tag = $Matches[1]
+            }
           } else {
-            $version = "${{ github.ref_name }}"
+            $tag = "${{ github.ref_name }}"
           }
-          if (-not $version.StartsWith("v")) {
-            throw "Version must start with v, for example v0.1.0"
+          if (-not $tag.StartsWith("v")) {
+            $tag = "v$tag"
           }
-          "version=$version" >> $env:GITHUB_OUTPUT
-
-      - name: Create tag for manual release
-        if: github.event_name == 'workflow_dispatch'
-        shell: pwsh
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          $version = "${{ steps.version.outputs.version }}"
-          $existing = git tag --list $version
-          if ($existing -eq $version) {
-            Write-Host "Tag $version already exists."
-          } else {
-            git tag $version
-            git push origin $version
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+            throw "Tag must look like v0.1.0"
           }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Release tag: $tag"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -76,7 +73,7 @@ jobs:
         id: asset
         shell: pwsh
         run: |
-          $version = "${{ steps.version.outputs.version }}"
+          $version = "${{ steps.release.outputs.tag }}"
           $source = "dist\USB-DJ-Formatter.exe"
           $target = "dist\USB-DJ-Formatter-$version.exe"
           if (-not (Test-Path $source)) {
@@ -91,10 +88,30 @@ jobs:
           name: USB-DJ-Formatter
           path: ${{ steps.asset.outputs.path }}
 
+      - name: Create tag for manual release
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          $tag = "${{ steps.release.outputs.tag }}"
+          $existing = git rev-parse -q --verify "refs/tags/$tag"
+          if ($LASTEXITCODE -eq 0) {
+            $head = git rev-parse HEAD
+            if ($existing -ne $head) {
+              throw "Tag $tag already exists and points to $existing, not current commit $head."
+            }
+            Write-Host "Tag $tag already exists on the current commit."
+          } else {
+            git tag $tag
+            git push origin $tag
+          }
+
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: USB DJ Formatter ${{ steps.version.outputs.version }}
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: USB DJ Formatter ${{ steps.release.outputs.tag }}
           files: ${{ steps.asset.outputs.path }}
           generate_release_notes: true
+          fail_on_unmatched_files: true
