@@ -9,6 +9,15 @@ from usbdj.windows_backend import build_diskpart_script
 
 
 class PlannerTests(unittest.TestCase):
+    def assertSamePath(self, actual: Path, expected: Path) -> None:
+        if actual.exists() and expected.exists():
+            self.assertTrue(actual.samefile(expected), f"{actual} != {expected}")
+            return
+        self.assertEqual(
+            actual.resolve().as_posix().lower(),
+            expected.resolve().as_posix().lower(),
+        )
+
     def test_legacy_uses_windows_native_at_32_gib(self) -> None:
         plan = create_format_plan(FormatMode.LEGACY, 32 * 1024**3)
 
@@ -121,8 +130,8 @@ class PlannerTests(unittest.TestCase):
             helper.write_bytes(b"")
             windows_backend.os.environ[windows_backend.FAT32_HELPER_ENV] = str(helper)
             try:
-                self.assertEqual(windows_backend.default_fat32_helper_path(), helper)
-                self.assertEqual(windows_backend.require_fat32_helper(), helper)
+                self.assertSamePath(windows_backend.default_fat32_helper_path(), helper)
+                self.assertSamePath(windows_backend.require_fat32_helper(), helper)
             finally:
                 if original_env is None:
                     windows_backend.os.environ.pop(windows_backend.FAT32_HELPER_ENV, None)
@@ -153,7 +162,7 @@ class PlannerTests(unittest.TestCase):
             windows_backend.sys.frozen = True  # type: ignore[attr-defined]
             windows_backend.sys.executable = str(temp_path / "USB-DJ-Formatter.exe")
             try:
-                self.assertEqual(windows_backend.default_fat32_helper_path(), helper)
+                self.assertSamePath(windows_backend.default_fat32_helper_path(), helper)
             finally:
                 if had_meipass:
                     windows_backend.sys._MEIPASS = original_meipass  # type: ignore[attr-defined]
@@ -179,7 +188,7 @@ class PlannerTests(unittest.TestCase):
             windows_backend.sys.frozen = True  # type: ignore[attr-defined]
             windows_backend.sys.executable = str(temp_path / "USB-DJ-Formatter.exe")
             try:
-                self.assertEqual(windows_backend.default_fat32_helper_path(), helper)
+                self.assertSamePath(windows_backend.default_fat32_helper_path(), helper)
             finally:
                 if had_meipass:
                     windows_backend.sys._MEIPASS = original_meipass  # type: ignore[attr-defined]
