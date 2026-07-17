@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import locale
+import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -20,6 +22,10 @@ from usbdj.planner import create_format_plan
 
 class BackendError(RuntimeError):
     pass
+
+
+FAT32_HELPER_ENV = "USBDJ_FAT32_HELPER"
+FAT32_HELPER_RELATIVE_PATH = Path("tools") / "fat32format.exe"
 
 
 def _subprocess_window_kwargs() -> dict[str, object]:
@@ -230,7 +236,7 @@ def prepare_disk(
     if plan.engine == FormatterEngine.WINDOWS_NATIVE:
         _append_log(log_path, "Formatacao nativa concluida pelo diskpart.")
     else:
-        helper = fat32_helper or Path("tools") / "fat32format.exe"
+        helper = fat32_helper or default_fat32_helper_path()
         _format_with_large_fat32_helper(helper, plan, drive_letter, log_path)
 
     validation = validate_volume(drive_letter, plan)
@@ -264,12 +270,7 @@ def _format_with_large_fat32_helper(
     drive_letter: str,
     log_path: Path | None = None,
 ) -> None:
-    helper_path = Path(helper)
-    if not helper_path.exists():
-        raise BackendError(
-            f"Helper FAT32 grande nao encontrado: {helper_path}. "
-            "Adicione uma ferramenta validada antes de formatar FAT32 acima de 32 GiB."
-        )
+    helper_path = require_fat32_helper(helper)
     resolved = shutil.which(str(helper_path)) or str(helper_path)
     _append_log(log_path, f"Executando helper FAT32 grande em {drive_letter.upper()}:")
     _run_checked([resolved, f"{drive_letter.upper()}:"], log_path)
@@ -278,6 +279,56 @@ def _format_with_large_fat32_helper(
         f"-NewFileSystemLabel '{plan.label}'"
     )
     _append_log(log_path, "Helper FAT32 grande concluido.")
+
+
+def fat32_helper_candidates() -> list[Path]:
+    candidates: list[Path] = []
+
+    configured = os.environ.get(FAT32_HELPER_ENV)
+    if configured:
+        candidates.append(Path(configured))
+
+    bundled_base = getattr(sys, "_MEIPASS", None)
+    if bundled_base:
+        candidates.append(Path(bundled_base) / FAT32_HELPER_RELATIVE_PATH)
+
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(sys.executable).resolve().parent / FAT32_HELPER_RELATIVE_PATH)
+
+    project_root = Path(__file__).resolve().parents[1]
+    candidates.append(project_root / FAT32_HELPER_RELATIVE_PATH)
+    candidates.append(Path.cwd() / FAT32_HELPER_RELATIVE_PATH)
+
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve() if candidate.exists() else candidate.absolute()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(candidate)
+    return unique
+
+
+def default_fat32_helper_path() -> Path:
+    candidates = fat32_helper_candidates()
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def require_fat32_helper(fat32_helper: Path | None = None) -> Path:
+    helper_path = Path(fat32_helper) if fat32_helper else default_fat32_helper_path()
+    if helper_path.exists():
+        return helper_path
+    checked = ", ".join(str(path) for path in fat32_helper_candidates())
+    raise BackendError(
+        f"Helper FAT32 grande nao encontrado: {helper_path}. "
+        "Para FAT32 acima de 32 GiB, adicione uma ferramenta validada em "
+        "tools\\fat32format.exe ou defina USBDJ_FAT32_HELPER com o caminho do executavel. "
+        f"Caminhos verificados: {checked}"
+    )
 
 
 def validate_volume(drive_letter: str, plan: FormatPlan) -> VolumeValidation:

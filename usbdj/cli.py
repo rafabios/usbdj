@@ -3,9 +3,14 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from usbdj.models import FormatMode
+from usbdj.models import FormatMode, FormatterEngine
 from usbdj.planner import create_format_plan
-from usbdj.windows_backend import BackendError, list_removable_disks, prepare_disk
+from usbdj.windows_backend import (
+    BackendError,
+    list_removable_disks,
+    prepare_disk,
+    require_fat32_helper,
+)
 
 
 def _format_gb(size_bytes: int) -> str:
@@ -27,6 +32,7 @@ def main() -> int:
     format_cmd.add_argument("--mode", choices=[m.value for m in FormatMode], required=True)
     format_cmd.add_argument("--execute", action="store_true")
     format_cmd.add_argument("--confirm", default="")
+    format_cmd.add_argument("--fat32-helper", type=Path)
     format_cmd.add_argument("--log", type=Path, default=Path("logs/usbdj-cli.log"))
 
     args = parser.parse_args()
@@ -68,6 +74,13 @@ def main() -> int:
         print(f"Disco: {disk.number} - {disk.friendly_name} - {_format_gb(disk.size_bytes)}")
         print(f"Formato: {plan.filesystem.value}")
         print(f"Engine: {plan.engine.value}")
+        if plan.engine == FormatterEngine.LARGE_FAT32_HELPER:
+            try:
+                helper_path = require_fat32_helper(args.fat32_helper)
+            except BackendError as exc:
+                print(f"Erro: {exc}")
+                return 2
+            print(f"Helper FAT32: {helper_path}")
         if not args.execute:
             print("Simulacao apenas. Adicione --execute --confirm FORMATAR para executar.")
             return 0
@@ -78,6 +91,7 @@ def main() -> int:
             result = prepare_disk(
                 disk,
                 FormatMode(args.mode),
+                fat32_helper=args.fat32_helper,
                 dry_run=False,
                 log_path=args.log,
             )

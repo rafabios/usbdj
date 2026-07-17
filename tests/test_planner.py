@@ -1,4 +1,6 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from usbdj.models import Filesystem, FormatMode, FormatterEngine
 from usbdj.planner import create_format_plan
@@ -106,6 +108,62 @@ class PlannerTests(unittest.TestCase):
 
         self.assertIn("acesso negado", message.lower())
         self.assertIn("pendrive", message.lower())
+
+    def test_default_fat32_helper_uses_project_tools_in_development(self) -> None:
+        expected = Path(windows_backend.__file__).resolve().parents[1] / "tools" / "fat32format.exe"
+
+        self.assertEqual(windows_backend.default_fat32_helper_path(), expected)
+
+    def test_default_fat32_helper_prefers_env_var(self) -> None:
+        original_env = windows_backend.os.environ.get(windows_backend.FAT32_HELPER_ENV)
+        with TemporaryDirectory() as temp_dir:
+            helper = Path(temp_dir) / "fat32format.exe"
+            helper.write_bytes(b"")
+            windows_backend.os.environ[windows_backend.FAT32_HELPER_ENV] = str(helper)
+            try:
+                self.assertEqual(windows_backend.default_fat32_helper_path(), helper)
+                self.assertEqual(windows_backend.require_fat32_helper(), helper)
+            finally:
+                if original_env is None:
+                    windows_backend.os.environ.pop(windows_backend.FAT32_HELPER_ENV, None)
+                else:
+                    windows_backend.os.environ[windows_backend.FAT32_HELPER_ENV] = original_env
+
+    def test_require_fat32_helper_reports_missing_candidates(self) -> None:
+        missing = Path("missing-fat32format.exe")
+
+        with self.assertRaises(windows_backend.BackendError) as ctx:
+            windows_backend.require_fat32_helper(missing)
+
+        self.assertIn(str(missing), str(ctx.exception))
+        self.assertIn("USBDJ_FAT32_HELPER", str(ctx.exception))
+
+    def test_default_fat32_helper_prefers_bundled_tool_when_frozen(self) -> None:
+        original_meipass = getattr(windows_backend.sys, "_MEIPASS", None)
+        had_meipass = hasattr(windows_backend.sys, "_MEIPASS")
+        original_frozen = getattr(windows_backend.sys, "frozen", None)
+        had_frozen = hasattr(windows_backend.sys, "frozen")
+        original_executable = windows_backend.sys.executable
+        with TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            helper = temp_path / "tools" / "fat32format.exe"
+            helper.parent.mkdir()
+            helper.write_bytes(b"")
+            windows_backend.sys._MEIPASS = str(temp_path)  # type: ignore[attr-defined]
+            windows_backend.sys.frozen = True  # type: ignore[attr-defined]
+            windows_backend.sys.executable = str(temp_path / "USB-DJ-Formatter.exe")
+            try:
+                self.assertEqual(windows_backend.default_fat32_helper_path(), helper)
+            finally:
+                if had_meipass:
+                    windows_backend.sys._MEIPASS = original_meipass  # type: ignore[attr-defined]
+                else:
+                    delattr(windows_backend.sys, "_MEIPASS")
+                if had_frozen:
+                    windows_backend.sys.frozen = original_frozen  # type: ignore[attr-defined]
+                else:
+                    delattr(windows_backend.sys, "frozen")
+                windows_backend.sys.executable = original_executable
 
 
 if __name__ == "__main__":
