@@ -16,7 +16,7 @@ class Filesystem(str, Enum):
 
 class FormatterEngine(str, Enum):
     WINDOWS_NATIVE = "windows_native"
-    LARGE_FAT32_HELPER = "large_fat32_helper"
+    LARGE_FAT32_INTERNAL = "large_fat32_internal"
 
 
 @dataclass(frozen=True)

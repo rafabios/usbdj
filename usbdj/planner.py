@@ -27,14 +27,14 @@ def create_format_plan(
             engine = (
                 FormatterEngine.WINDOWS_NATIVE
                 if size_bytes <= FAT32_NATIVE_LIMIT_BYTES
-                else FormatterEngine.LARGE_FAT32_HELPER
+                else FormatterEngine.LARGE_FAT32_INTERNAL
             )
         else:
             engine = FormatterEngine.WINDOWS_NATIVE
         warning = None
-        if engine == FormatterEngine.LARGE_FAT32_HELPER:
+        if engine == FormatterEngine.LARGE_FAT32_INTERNAL:
             warning = (
-                "FAT32 acima de 32 GiB precisa do helper FAT32 grande embutido."
+                "FAT32 acima de 32 GiB sera formatado pelo backend interno."
             )
         return FormatPlan(
             mode=mode,
@@ -53,8 +53,8 @@ def create_format_plan(
     if mode == FormatMode.MODERN:
         selected_filesystem = filesystem or MODERN_PRESET.filesystem
         if selected_filesystem == Filesystem.FAT32 and size_bytes > FAT32_NATIVE_LIMIT_BYTES:
-            engine = FormatterEngine.LARGE_FAT32_HELPER
-            warning = "FAT32 acima de 32 GiB precisa do helper FAT32 grande embutido."
+            engine = FormatterEngine.LARGE_FAT32_INTERNAL
+            warning = "FAT32 acima de 32 GiB sera formatado pelo backend interno."
         else:
             engine = FormatterEngine.WINDOWS_NATIVE
             warning = None

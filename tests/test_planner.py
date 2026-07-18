@@ -1,7 +1,14 @@
+import struct
 import unittest
-from pathlib import Path
-from tempfile import TemporaryDirectory
 
+from usbdj.fat32_formatter import (
+    FAT32_EOC,
+    build_boot_sector,
+    build_fat_header,
+    build_fsinfo_sector,
+    build_root_directory_cluster,
+    create_fat32_layout,
+)
 from usbdj.models import Filesystem, FormatMode, FormatterEngine
 from usbdj.planner import create_format_plan
 import usbdj.windows_backend as windows_backend
@@ -9,15 +16,6 @@ from usbdj.windows_backend import build_diskpart_script
 
 
 class PlannerTests(unittest.TestCase):
-    def assertSamePath(self, actual: Path, expected: Path) -> None:
-        if actual.exists() and expected.exists():
-            self.assertTrue(actual.samefile(expected), f"{actual} != {expected}")
-            return
-        self.assertEqual(
-            actual.resolve().as_posix().lower(),
-            expected.resolve().as_posix().lower(),
-        )
-
     def test_legacy_uses_windows_native_at_32_gib(self) -> None:
         plan = create_format_plan(FormatMode.LEGACY, 32 * 1024**3)
 
@@ -25,10 +23,10 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(plan.filesystem.value, "FAT32")
         self.assertEqual(plan.partition_style, "MBR")
 
-    def test_legacy_uses_large_fat32_helper_above_32_gib(self) -> None:
+    def test_legacy_uses_internal_fat32_above_32_gib(self) -> None:
         plan = create_format_plan(FormatMode.LEGACY, 33 * 1024**3)
 
-        self.assertEqual(plan.engine, FormatterEngine.LARGE_FAT32_HELPER)
+        self.assertEqual(plan.engine, FormatterEngine.LARGE_FAT32_INTERNAL)
         self.assertIsNotNone(plan.warning)
 
     def test_modern_uses_exfat_windows_native(self) -> None:
@@ -49,7 +47,7 @@ class PlannerTests(unittest.TestCase):
         self.assertNotIn("online disk", script)
         self.assertLess(script.index("format fs=FAT32"), script.index("assign letter=Z"))
 
-    def test_diskpart_script_leaves_format_to_helper_when_needed(self) -> None:
+    def test_diskpart_script_leaves_format_to_internal_fat32_when_needed(self) -> None:
         plan = create_format_plan(FormatMode.LEGACY, 64 * 1024**3)
         script = build_diskpart_script(3, plan, "Z")
 
@@ -118,87 +116,53 @@ class PlannerTests(unittest.TestCase):
         self.assertIn("acesso negado", message.lower())
         self.assertIn("pendrive", message.lower())
 
-    def test_default_fat32_helper_uses_project_tools_in_development(self) -> None:
-        expected = Path(windows_backend.__file__).resolve().parents[1] / "tools" / "fat32format.exe"
+    def test_internal_fat32_layout_for_large_usb(self) -> None:
+        layout = create_fat32_layout(64 * 1024**3, allocation_unit_size=32768)
 
-        self.assertEqual(windows_backend.default_fat32_helper_path(), expected)
+        self.assertEqual(layout.bytes_per_sector, 512)
+        self.assertEqual(layout.sectors_per_cluster, 64)
+        self.assertEqual(layout.reserved_sectors, 32)
+        self.assertEqual(layout.fat_count, 2)
+        self.assertGreaterEqual(layout.cluster_count, 65525)
+        self.assertLess(layout.data_start_sector, layout.total_sectors)
 
-    def test_default_fat32_helper_prefers_env_var(self) -> None:
-        original_env = windows_backend.os.environ.get(windows_backend.FAT32_HELPER_ENV)
-        with TemporaryDirectory() as temp_dir:
-            helper = Path(temp_dir) / "fat32format.exe"
-            helper.write_bytes(b"")
-            windows_backend.os.environ[windows_backend.FAT32_HELPER_ENV] = str(helper)
-            try:
-                self.assertSamePath(windows_backend.default_fat32_helper_path(), helper)
-                self.assertSamePath(windows_backend.require_fat32_helper(), helper)
-            finally:
-                if original_env is None:
-                    windows_backend.os.environ.pop(windows_backend.FAT32_HELPER_ENV, None)
-                else:
-                    windows_backend.os.environ[windows_backend.FAT32_HELPER_ENV] = original_env
+    def test_internal_fat32_boot_sector_fields(self) -> None:
+        layout = create_fat32_layout(64 * 1024**3, allocation_unit_size=32768)
+        boot = build_boot_sector(layout, "CDJ_USB", serial=0x12345678)
 
-    def test_require_fat32_helper_reports_missing_candidates(self) -> None:
-        missing = Path("missing-fat32format.exe")
+        self.assertEqual(boot[0:3], b"\xEB\x58\x90")
+        self.assertEqual(boot[3:11], b"MSWIN4.1")
+        self.assertEqual(struct.unpack_from("<H", boot, 11)[0], 512)
+        self.assertEqual(boot[13], 64)
+        self.assertEqual(struct.unpack_from("<H", boot, 14)[0], 32)
+        self.assertEqual(boot[16], 2)
+        self.assertEqual(struct.unpack_from("<I", boot, 36)[0], layout.fat_size_sectors)
+        self.assertEqual(struct.unpack_from("<I", boot, 44)[0], 2)
+        self.assertEqual(boot[71:82], b"CDJ_USB    ")
+        self.assertEqual(boot[82:90], b"FAT32   ")
+        self.assertEqual(boot[-2:], b"\x55\xAA")
 
-        with self.assertRaises(windows_backend.BackendError) as ctx:
-            windows_backend.require_fat32_helper(missing)
+    def test_internal_fat32_fsinfo_and_fat_header(self) -> None:
+        layout = create_fat32_layout(64 * 1024**3, allocation_unit_size=32768)
+        fsinfo = build_fsinfo_sector(layout)
+        fat = build_fat_header(layout)
 
-        self.assertIn(str(missing), str(ctx.exception))
-        self.assertIn("USBDJ_FAT32_HELPER", str(ctx.exception))
+        self.assertEqual(struct.unpack_from("<I", fsinfo, 0)[0], 0x41615252)
+        self.assertEqual(struct.unpack_from("<I", fsinfo, 484)[0], 0x61417272)
+        self.assertEqual(struct.unpack_from("<I", fsinfo, 488)[0], layout.cluster_count - 1)
+        self.assertEqual(struct.unpack_from("<I", fsinfo, 508)[0], 0xAA550000)
+        self.assertEqual(struct.unpack_from("<I", fat, 0)[0], 0x0FFFFFF8)
+        self.assertEqual(struct.unpack_from("<I", fat, 4)[0], 0xFFFFFFFF)
+        self.assertEqual(struct.unpack_from("<I", fat, 8)[0], FAT32_EOC)
 
-    def test_default_fat32_helper_prefers_bundled_tool_when_frozen(self) -> None:
-        original_meipass = getattr(windows_backend.sys, "_MEIPASS", None)
-        had_meipass = hasattr(windows_backend.sys, "_MEIPASS")
-        original_frozen = getattr(windows_backend.sys, "frozen", None)
-        had_frozen = hasattr(windows_backend.sys, "frozen")
-        original_executable = windows_backend.sys.executable
-        with TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            helper = temp_path / "tools" / "fat32format.exe"
-            helper.parent.mkdir()
-            helper.write_bytes(b"")
-            windows_backend.sys._MEIPASS = str(temp_path)  # type: ignore[attr-defined]
-            windows_backend.sys.frozen = True  # type: ignore[attr-defined]
-            windows_backend.sys.executable = str(temp_path / "USB-DJ-Formatter.exe")
-            try:
-                self.assertSamePath(windows_backend.default_fat32_helper_path(), helper)
-            finally:
-                if had_meipass:
-                    windows_backend.sys._MEIPASS = original_meipass  # type: ignore[attr-defined]
-                else:
-                    delattr(windows_backend.sys, "_MEIPASS")
-                if had_frozen:
-                    windows_backend.sys.frozen = original_frozen  # type: ignore[attr-defined]
-                else:
-                    delattr(windows_backend.sys, "frozen")
-                windows_backend.sys.executable = original_executable
+    def test_internal_fat32_root_directory_starts_with_volume_label(self) -> None:
+        layout = create_fat32_layout(64 * 1024**3, allocation_unit_size=32768)
+        root_dir = build_root_directory_cluster(layout, "CDJ_USB")
 
-    def test_default_fat32_helper_accepts_helper_next_to_frozen_exe(self) -> None:
-        original_meipass = getattr(windows_backend.sys, "_MEIPASS", None)
-        had_meipass = hasattr(windows_backend.sys, "_MEIPASS")
-        original_frozen = getattr(windows_backend.sys, "frozen", None)
-        had_frozen = hasattr(windows_backend.sys, "frozen")
-        original_executable = windows_backend.sys.executable
-        with TemporaryDirectory() as temp_dir:
-            temp_path = Path(temp_dir)
-            helper = temp_path / "fat32format.exe"
-            helper.write_bytes(b"")
-            windows_backend.sys._MEIPASS = str(temp_path / "_MEI123")  # type: ignore[attr-defined]
-            windows_backend.sys.frozen = True  # type: ignore[attr-defined]
-            windows_backend.sys.executable = str(temp_path / "USB-DJ-Formatter.exe")
-            try:
-                self.assertSamePath(windows_backend.default_fat32_helper_path(), helper)
-            finally:
-                if had_meipass:
-                    windows_backend.sys._MEIPASS = original_meipass  # type: ignore[attr-defined]
-                else:
-                    delattr(windows_backend.sys, "_MEIPASS")
-                if had_frozen:
-                    windows_backend.sys.frozen = original_frozen  # type: ignore[attr-defined]
-                else:
-                    delattr(windows_backend.sys, "frozen")
-                windows_backend.sys.executable = original_executable
+        self.assertEqual(len(root_dir), 32768)
+        self.assertEqual(root_dir[0:11], b"CDJ_USB    ")
+        self.assertEqual(root_dir[11], 0x08)
+        self.assertEqual(root_dir[32:64], bytes(32))
 
 
 if __name__ == "__main__":

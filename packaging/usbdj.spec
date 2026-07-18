@@ -5,10 +5,7 @@ import os
 block_cipher = None
 project_root = os.path.abspath(os.path.join(SPECPATH, ".."))
 icon_path = os.path.join(project_root, "assets", "dj.ico")
-fat32_helper_path = os.path.join(project_root, "tools", "fat32format.exe")
 datas = [(icon_path, "assets")]
-if os.path.exists(fat32_helper_path):
-    datas.append((fat32_helper_path, "tools"))
 
 a = Analysis(
     [os.path.join(project_root, "run_gui.py")],

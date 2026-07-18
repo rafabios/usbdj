@@ -19,7 +19,6 @@ def main() -> int:
     parser.add_argument("--partition-style", choices=["MBR", "GPT"])
     parser.add_argument("--allocation-unit-size", type=int)
     parser.add_argument("--label")
-    parser.add_argument("--fat32-helper", type=Path)
     args = parser.parse_args()
 
     result_data: dict[str, object]
@@ -39,7 +38,6 @@ def main() -> int:
         result = prepare_disk(
             disk,
             FormatMode(args.mode),
-            fat32_helper=args.fat32_helper,
             dry_run=False,
             log_path=args.log,
             plan_override=plan,

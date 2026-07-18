@@ -6,7 +6,7 @@ Ferramenta portátil para Windows para preparar pendrives compatíveis com CDJs/
 
 - **Legado:** FAT32 + MBR, pensado para CDJs antigos.
   - Ate 32 GB: usa ferramentas nativas do Windows.
-  - Acima de 32 GB: usa um helper FAT32 grande embutido, como `fat32format.exe`.
+  - Acima de 32 GB: usa o formatador FAT32 interno do app.
   - Exemplos: CDJ-350, CDJ-850, CDJ-900, CDJ-2000, XDJ-AERO, XDJ-R1, XDJ-RX.
 - **Novo:** exFAT + MBR, pensado para CDJs/XDJs recentes.
   - Exemplos: CDJ-3000, CDJ-3000X, XDJ-RX2, XDJ-RR, XDJ-XZ, XDJ-RX3, OPUS-QUAD, OMNIS-DUO, XDJ-AZ.
@@ -27,7 +27,7 @@ Este repositorio comeca com um MVP seguro:
 - validacao final de filesystem, label e estilo de particao;
 - testes unitarios do planejador.
 
-O helper FAT32 grande precisa estar em `tools/fat32format.exe` antes de publicar uma Release. O workflow falha de proposito se esse arquivo nao existir, para evitar publicar um app sem suporte a FAT32 acima de 32 GiB.
+FAT32 acima de 32 GiB e formatado pelo backend interno do app, sem depender de `fat32format.exe` ou outro binario externo.
 
 ## Uso em desenvolvimento
 

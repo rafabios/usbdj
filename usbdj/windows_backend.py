@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import json
 import locale
-import os
-import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
+from usbdj.fat32_formatter import Fat32FormatError, format_fat32_volume
 from usbdj.models import (
     DiskInfo,
     FormatMode,
@@ -22,10 +20,6 @@ from usbdj.planner import create_format_plan
 
 class BackendError(RuntimeError):
     pass
-
-
-FAT32_HELPER_ENV = "USBDJ_FAT32_HELPER"
-FAT32_HELPER_RELATIVE_PATH = Path("tools") / "fat32format.exe"
 
 
 def _subprocess_window_kwargs() -> dict[str, object]:
@@ -187,7 +181,6 @@ def prepare_disk(
     disk: DiskInfo,
     mode: FormatMode,
     *,
-    fat32_helper: Path | None = None,
     dry_run: bool = True,
     log_path: Path | None = None,
     plan_override: FormatPlan | None = None,
@@ -236,8 +229,7 @@ def prepare_disk(
     if plan.engine == FormatterEngine.WINDOWS_NATIVE:
         _append_log(log_path, "Formatacao nativa concluida pelo diskpart.")
     else:
-        helper = fat32_helper or default_fat32_helper_path()
-        _format_with_large_fat32_helper(helper, plan, drive_letter, log_path)
+        _format_with_internal_fat32(plan, drive_letter, log_path)
 
     validation = validate_volume(drive_letter, plan)
     _append_log(log_path, validation.message)
@@ -264,76 +256,57 @@ def _format_with_windows(
     _append_log(log_path, "Formatacao nativa concluida.")
 
 
-def _format_with_large_fat32_helper(
-    helper: Path,
+def _format_with_internal_fat32(
     plan: FormatPlan,
     drive_letter: str,
     log_path: Path | None = None,
 ) -> None:
-    helper_path = require_fat32_helper(helper)
-    resolved = shutil.which(str(helper_path)) or str(helper_path)
-    _append_log(log_path, f"Executando helper FAT32 grande em {drive_letter.upper()}:")
-    _run_checked([resolved, f"{drive_letter.upper()}:"], log_path)
+    geometry = get_partition_geometry(drive_letter)
+    _append_log(
+        log_path,
+        (
+            f"Formatando {drive_letter.upper()}: como FAT32 pelo backend interno "
+            f"({geometry['size_bytes']} bytes, setor {geometry['bytes_per_sector']} bytes)."
+        ),
+    )
+    try:
+        layout = format_fat32_volume(
+            drive_letter,
+            total_bytes=geometry["size_bytes"],
+            bytes_per_sector=geometry["bytes_per_sector"],
+            allocation_unit_size=plan.allocation_unit_size,
+            label=plan.label,
+        )
+    except Fat32FormatError as exc:
+        raise BackendError(str(exc)) from exc
+    _run_powershell("Update-HostStorageCache; Start-Sleep -Milliseconds 500")
     _run_powershell(
         f"Set-Volume -DriveLetter {drive_letter.upper()} "
         f"-NewFileSystemLabel '{plan.label}'"
     )
-    _append_log(log_path, "Helper FAT32 grande concluido.")
-
-
-def fat32_helper_candidates() -> list[Path]:
-    candidates: list[Path] = []
-
-    configured = os.environ.get(FAT32_HELPER_ENV)
-    if configured:
-        candidates.append(Path(configured))
-
-    bundled_base = getattr(sys, "_MEIPASS", None)
-    if bundled_base:
-        candidates.append(Path(bundled_base) / FAT32_HELPER_RELATIVE_PATH)
-        candidates.append(Path(bundled_base) / FAT32_HELPER_RELATIVE_PATH.name)
-
-    if getattr(sys, "frozen", False):
-        exe_dir = Path(sys.executable).resolve().parent
-        candidates.append(exe_dir / FAT32_HELPER_RELATIVE_PATH)
-        candidates.append(exe_dir / FAT32_HELPER_RELATIVE_PATH.name)
-
-    project_root = Path(__file__).resolve().parents[1]
-    candidates.append(project_root / FAT32_HELPER_RELATIVE_PATH)
-    candidates.append(Path.cwd() / FAT32_HELPER_RELATIVE_PATH)
-    candidates.append(Path.cwd() / FAT32_HELPER_RELATIVE_PATH.name)
-
-    unique: list[Path] = []
-    seen: set[Path] = set()
-    for candidate in candidates:
-        resolved = candidate.resolve() if candidate.exists() else candidate.absolute()
-        if resolved in seen:
-            continue
-        seen.add(resolved)
-        unique.append(candidate)
-    return unique
-
-
-def default_fat32_helper_path() -> Path:
-    candidates = fat32_helper_candidates()
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
-
-
-def require_fat32_helper(fat32_helper: Path | None = None) -> Path:
-    helper_path = Path(fat32_helper) if fat32_helper else default_fat32_helper_path()
-    if helper_path.exists():
-        return helper_path
-    checked = ", ".join(str(path) for path in fat32_helper_candidates())
-    raise BackendError(
-        f"Helper FAT32 grande nao encontrado: {helper_path}. "
-        "Para FAT32 acima de 32 GiB, adicione uma ferramenta validada em "
-        "tools\\fat32format.exe, coloque fat32format.exe ao lado do app, "
-        "ou defina USBDJ_FAT32_HELPER com o caminho do executavel. "
-        f"Caminhos verificados: {checked}"
+    _append_log(
+        log_path,
+        (
+            "FAT32 interno concluido: "
+            f"{layout.cluster_count} clusters, FAT com {layout.fat_size_sectors} setores."
+        ),
     )
+
+
+def get_partition_geometry(drive_letter: str) -> dict[str, int]:
+    script = (
+        f"$part = Get-Partition -DriveLetter {drive_letter.upper()}; "
+        "$disk = Get-Disk -Number $part.DiskNumber; "
+        "[PSCustomObject]@{"
+        "Size=$part.Size;"
+        "BytesPerSector=$disk.LogicalSectorSize"
+        "} | ConvertTo-Json -Compress"
+    )
+    data = json.loads(_run_powershell(script))
+    return {
+        "size_bytes": int(data.get("Size") or 0),
+        "bytes_per_sector": int(data.get("BytesPerSector") or 512),
+    }
 
 
 def validate_volume(drive_letter: str, plan: FormatPlan) -> VolumeValidation:

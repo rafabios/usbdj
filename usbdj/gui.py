@@ -8,7 +8,7 @@ from datetime import datetime
 from tkinter import messagebox, ttk
 
 from usbdj.elevation import run_worker_with_windows_permission
-from usbdj.models import DiskInfo, Filesystem, FormatMode, FormatterEngine
+from usbdj.models import DiskInfo, Filesystem, FormatMode
 from usbdj.planner import create_format_plan
 from usbdj.presets import SUPPORTED_HINTS
 from usbdj.windows_backend import (
@@ -16,7 +16,6 @@ from usbdj.windows_backend import (
     is_windows_admin,
     list_removable_disks,
     prepare_disk,
-    require_fat32_helper,
 )
 
 
@@ -218,13 +217,6 @@ class UsbDjApp(tk.Tk):
         )
         if plan.warning:
             message += f"\n\n{plan.warning}"
-        if plan.engine == FormatterEngine.LARGE_FAT32_HELPER:
-            try:
-                helper_path = require_fat32_helper()
-            except BackendError as exc:
-                message += f"\n\nBloqueio: {exc}"
-            else:
-                message += f"\nHelper FAT32: {helper_path}"
         messagebox.showinfo("Plano de formatacao", message)
 
     def prepare_selected_disk(self) -> None:
@@ -235,14 +227,6 @@ class UsbDjApp(tk.Tk):
 
         mode = FormatMode(self.mode.get())
         plan = create_format_plan(mode, disk.size_bytes, **self.advanced_plan_kwargs())
-        fat32_helper = None
-        if plan.engine == FormatterEngine.LARGE_FAT32_HELPER:
-            try:
-                fat32_helper = require_fat32_helper()
-            except BackendError as exc:
-                self.status.set("Helper FAT32 grande nao encontrado.")
-                messagebox.showerror("Helper FAT32 ausente", str(exc))
-                return
         cluster = plan.allocation_unit_size or "automatico"
         warning = (
             f"O disco {disk.number} ({disk.friendly_name}, {disk.size_gb:.1f} GB) sera apagado.\n\n"
@@ -275,8 +259,6 @@ class UsbDjApp(tk.Tk):
                 "--result",
                 str(result_path),
             ]
-            if fat32_helper:
-                worker_args.extend(["--fat32-helper", str(fat32_helper)])
             worker_args.extend(self.advanced_worker_args())
             started = run_worker_with_windows_permission(
                 worker_args
@@ -295,7 +277,6 @@ class UsbDjApp(tk.Tk):
             result = prepare_disk(
                 disk,
                 mode,
-                fat32_helper=fat32_helper,
                 dry_run=False,
                 log_path=log_path,
                 plan_override=plan,
