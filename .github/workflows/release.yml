@@ -11,16 +11,6 @@ on:
         required: false
         default: ""
         type: string
-      fat32_helper_url:
-        description: "URL do fat32format.exe validado. Use se o arquivo nao estiver em tools/."
-        required: false
-        default: ""
-        type: string
-      fat32_helper_sha256:
-        description: "SHA256 esperado do fat32format.exe informado na URL."
-        required: false
-        default: ""
-        type: string
 
 permissions:
   contents: write
@@ -74,30 +64,6 @@ jobs:
       - name: Run tests
         shell: pwsh
         run: python -m unittest discover -s tests
-
-      - name: Prepare FAT32 helper
-        shell: pwsh
-        run: |
-          $helper = "tools\fat32format.exe"
-          if (Test-Path $helper) {
-            Write-Host "Using FAT32 helper from repository: $helper"
-            exit 0
-          }
-
-          $helperUrl = "${{ github.event.inputs.fat32_helper_url }}".Trim()
-          $expectedSha256 = "${{ github.event.inputs.fat32_helper_sha256 }}".Trim().ToLowerInvariant()
-          if (-not $helperUrl -or -not $expectedSha256) {
-            throw "Missing $helper. Add the validated helper to tools/fat32format.exe, or run the manual workflow with fat32_helper_url and fat32_helper_sha256."
-          }
-
-          New-Item -ItemType Directory -Force -Path "tools" | Out-Null
-          Invoke-WebRequest -Uri $helperUrl -OutFile $helper
-          $actualSha256 = (Get-FileHash $helper -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actualSha256 -ne $expectedSha256) {
-            Remove-Item -Force $helper
-            throw "Downloaded FAT32 helper SHA256 mismatch. Expected $expectedSha256 but got $actualSha256."
-          }
-          Write-Host "Downloaded and verified FAT32 helper: $actualSha256"
 
       - name: Build executable
         shell: pwsh
